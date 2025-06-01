@@ -1,6 +1,9 @@
 import logging
 from telegram import InlineKeyboardButton, InlineKeyboardMarkup, Update
-from telegram.ext import Application, CommandHandler, CallbackQueryHandler, ContextTypes
+from telegram.ext import (
+    Application, CommandHandler, CallbackQueryHandler, ContextTypes,
+    ConversationHandler, MessageHandler, filters
+)
 
 # Enable logging
 logging.basicConfig(format="%(asctime)s - %(name)s - %(levelname)s - %(message)s", level=logging.INFO)
@@ -19,38 +22,53 @@ FAQS = {
     "Siapa yang setup?": "Team CashPlantX akan uruskan semua setup dari A-Z untuk anda."
 }
 
+# Define conversation states
+FEEDBACK = 1
+
+user_db = set()
+ADMIN_IDS = [123456789]  # Replace with actual Telegram user ID(s)
+
+# Admin-only decorator
+def admin_only(func):
+    async def wrapper(update: Update, context: ContextTypes.DEFAULT_TYPE):
+        if update.effective_user.id not in ADMIN_IDS:
+            await update.message.reply_text("🚫 You are not authorized.")
+            return
+        return await func(update, context)
+    return wrapper
 
 # Start command handler
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    user = update.effective_user
+    user_id = update.effective_user.id
+    user_db.add(user_id)
     await update.message.reply_text(
-        f"Hello {user.first_name}! Selamat datang ke bot CashPlantX. Pilih menu di bawah:",
-        reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("🔧 Tools", callback_data="tools_menu")]])
+        f"👋 Hello {update.effective_user.first_name}! Selamat datang ke bot CashPlantX. Pilih menu di bawah:",
+        reply_markup=InlineKeyboardMarkup([[
+            InlineKeyboardButton("🔧 Tools", callback_data="tools_menu"),
+            InlineKeyboardButton("💬 Feedback", callback_data="feedback_start"),
+            InlineKeyboardButton("ℹ️ Info", callback_data="info_menu")
+        ]])
     )
 
-
-# Show tools menu with inline buttons
+# Show tools menu
 async def tools_menu(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
     await query.answer()
-
     keyboard = [
-        [InlineKeyboardButton(text=tool, callback_data=f"tool_{tool}")]
+        [InlineKeyboardButton(f"🛠️ {tool}", callback_data=f"tool_{tool}")]
         for tool in TOOLS
     ]
-    keyboard.append([InlineKeyboardButton("❓ FAQ", callback_data="faq_menu")])
+    keyboard += [
+        [InlineKeyboardButton("❓ FAQ", callback_data="faq_menu")],
+        [InlineKeyboardButton("🔙 Kembali", callback_data="main_menu")]
+    ]
+    await query.edit_message_text("📋 Pilih menu:", reply_markup=InlineKeyboardMarkup(keyboard))
 
-    await query.edit_message_text("Pilih menu:", reply_markup=InlineKeyboardMarkup(keyboard))
-
-
-# Handle tool selection (e.g. CashPlantX)
+# Show tool info
 async def show_tool(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
     await query.answer()
-
     tool_name = query.data.replace("tool_", "")
-
-    # Tool response
     if tool_name == "CashPlantX":
         response = (
             "💎 *CashPlantX - Mesin Cetak USD Dengan AI + EA*\n\n"
@@ -69,20 +87,18 @@ async def show_tool(update: Update, context: ContextTypes.DEFAULT_TYPE):
     else:
         await query.edit_message_text(f"Tool *{tool_name}* belum disediakan.", parse_mode="Markdown")
 
-
-# Show list of FAQs
+# Show FAQs
 async def faq_menu(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
     await query.answer()
     keyboard = [
-        [InlineKeyboardButton(text=question, callback_data=f"faq_{i}")]
+        [InlineKeyboardButton(f"❓ {question}", callback_data=f"faq_{i}")]
         for i, question in enumerate(FAQS)
     ]
-    keyboard.append([InlineKeyboardButton("🔙 Kembali", callback_data="tools_back")])
-    await query.edit_message_text("Pilih soalan yang anda ingin tahu:", reply_markup=InlineKeyboardMarkup(keyboard))
+    keyboard.append([InlineKeyboardButton("🔙 Kembali", callback_data="tools_menu")])
+    await query.edit_message_text("📌 Pilih soalan yang anda ingin tahu:", reply_markup=InlineKeyboardMarkup(keyboard))
 
-
-# Show FAQ answer
+# FAQ answer
 async def faq_answer(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
     await query.answer()
@@ -90,74 +106,75 @@ async def faq_answer(update: Update, context: ContextTypes.DEFAULT_TYPE):
     question = list(FAQS.keys())[index]
     answer = FAQS[question]
     keyboard = [
-        [InlineKeyboardButton("❓ FAQ lain", callback_data="faq_menu")],
-        [InlineKeyboardButton("🔙 Menu Tools", callback_data="tools_back")]
+        [InlineKeyboardButton("📚 FAQ lain", callback_data="faq_menu")],
+        [InlineKeyboardButton("🔙 Menu Tools", callback_data="tools_menu")]
     ]
-    await query.edit_message_text(f"*{question}*\n\n{answer}", parse_mode="Markdown",
-                                  reply_markup=InlineKeyboardMarkup(keyboard))
+    await query.edit_message_text(f"*{question}*\n\n{answer}", parse_mode="Markdown", reply_markup=InlineKeyboardMarkup(keyboard))
 
-
-# Handle going back to tools menu
-async def back_to_tools(update: Update, context: ContextTypes.DEFAULT_TYPE):
+# Info menu (extra advanced flow)
+async def info_menu(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
     await query.answer()
-    await tools_menu(update, context)
+    keyboard = [[
+        InlineKeyboardButton("📨 Contact Support", url="https://t.me/CleopatraTheChartist"),
+        InlineKeyboardButton("🌐 Website", url="https://cashplantx.com")
+    ], [
+        InlineKeyboardButton("🔙 Kembali", callback_data="main_menu")
+    ]]
+    await query.edit_message_text("ℹ️ Info tambahan:", reply_markup=InlineKeyboardMarkup(keyboard))
 
-
-# Main function to setup handlers
-def main():
-    # Create the application
-    application = Application.builder().token(TOKEN).build()
-
-    # Add command and callback query handlers
-    application.add_handler(CommandHandler("start", start))
-    application.add_handler(CallbackQueryHandler(tools_menu, pattern="^tools_menu$"))
-    application.add_handler(CallbackQueryHandler(show_tool, pattern="^tool_"))
-    application.add_handler(CallbackQueryHandler(faq_menu, pattern="^faq_menu$"))
-    application.add_handler(CallbackQueryHandler(faq_answer, pattern="^faq_\\d+$"))
-    application.add_handler(CallbackQueryHandler(back_to_tools, pattern="^tools_back$"))
-
-    # Start polling
-    application.run_polling()
-
-
-if __name__ == "__main__":
-    main()
-
-ADMIN_IDS = [123456789]  # Replace with actual Telegram user ID(s)
-
-def admin_only(func):
-    def wrapper(update: Update, context: ContextTypes.DEFAULT_TYPE):
-        if update.effective_user.id not in ADMIN_IDS:
-            return update.message.reply_text("You are not authorized.")
-        return func(update, context)
-    return wrapper
-
-@admin_only
-async def broadcast(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    msg = " ".join(context.args)
-    for user_id in user_db:  # assumes you are tracking users
-        try:
-            await context.bot.send_message(chat_id=user_id, text=msg)
-        except:
-            pass
-    await update.message.reply_text("Broadcast sent.")
-
-async def feedback(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    await update.message.reply_text("Please send your feedback now:")
-    return FEEDBACK  # Use ConversationHandler to handle this flow
+# Feedback process
+async def feedback_start(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    query = update.callback_query
+    await query.answer()
+    await query.message.reply_text("📝 Sila taip maklum balas anda sekarang:")
+    return FEEDBACK
 
 async def save_feedback(update: Update, context: ContextTypes.DEFAULT_TYPE):
     feedback_text = update.message.text
     with open("feedback.txt", "a") as f:
         f.write(f"{update.effective_user.id}: {feedback_text}\n")
-    await update.message.reply_text("Thanks for your feedback!")
+    await update.message.reply_text("🙏 Terima kasih atas maklum balas anda!")
     return ConversationHandler.END
 
-user_db = set()
+# Admin broadcast
+@admin_only
+async def broadcast(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    msg = " ".join(context.args)
+    for user_id in user_db:
+        try:
+            await context.bot.send_message(chat_id=user_id, text=msg)
+        except:
+            pass
+    await update.message.reply_text("✅ Broadcast sent.")
 
-async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    user_id = update.effective_user.id
-    user_db.add(user_id)
-    await update.message.reply_text("Welcome to CPXBot!")
+# Return to main menu
+async def main_menu(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    await start(update, context)
 
+# App setup
+def main():
+    application = Application.builder().token(TOKEN).build()
+
+    application.add_handler(CommandHandler("start", start))
+    application.add_handler(CommandHandler("broadcast", broadcast))
+
+    application.add_handler(CallbackQueryHandler(tools_menu, pattern="^tools_menu$"))
+    application.add_handler(CallbackQueryHandler(show_tool, pattern="^tool_"))
+    application.add_handler(CallbackQueryHandler(faq_menu, pattern="^faq_menu$"))
+    application.add_handler(CallbackQueryHandler(faq_answer, pattern="^faq_\\d+$"))
+    application.add_handler(CallbackQueryHandler(main_menu, pattern="^main_menu$"))
+    application.add_handler(CallbackQueryHandler(feedback_start, pattern="^feedback_start$"))
+    application.add_handler(CallbackQueryHandler(info_menu, pattern="^info_menu$"))
+
+    conv_handler = ConversationHandler(
+        entry_points=[MessageHandler(filters.TEXT & ~filters.COMMAND, save_feedback)],
+        states={FEEDBACK: [MessageHandler(filters.TEXT & ~filters.COMMAND, save_feedback)]},
+        fallbacks=[]
+    )
+    application.add_handler(conv_handler)
+
+    application.run_polling()
+
+if __name__ == "__main__":
+    main()
