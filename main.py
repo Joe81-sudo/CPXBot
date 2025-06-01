@@ -55,7 +55,8 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
         reply_markup=InlineKeyboardMarkup([[
             InlineKeyboardButton("🔧 Tools", callback_data="tools_menu"),
             InlineKeyboardButton("💬 Feedback", callback_data="feedback_start"),
-            InlineKeyboardButton("ℹ️ Info", callback_data="info_menu")
+            InlineKeyboardButton("ℹ️ Info", callback_data="info_menu"),
+            InlineKeyboardButton("🚀 Start CashPlantX Bot", url="https://t.me/CashPlantX_bot?start=start")
         ]])
     )
 
