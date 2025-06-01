@@ -41,7 +41,16 @@ def admin_only(func):
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = update.effective_user.id
     user_db.add(user_id)
-    await update.message.reply_text(
+
+    # Determine which message to reply to
+    if update.message:
+        message = update.message
+    elif update.callback_query:
+        message = update.callback_query.message
+    else:
+        return
+
+    await message.reply_text(
         f"👋 Hello {update.effective_user.first_name}! Selamat datang ke bot CashPlantX. Pilih menu di bawah:",
         reply_markup=InlineKeyboardMarkup([[
             InlineKeyboardButton("🔧 Tools", callback_data="tools_menu"),
@@ -49,6 +58,7 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
             InlineKeyboardButton("ℹ️ Info", callback_data="info_menu")
         ]])
     )
+
 
 # Show tools menu
 async def tools_menu(update: Update, context: ContextTypes.DEFAULT_TYPE):
