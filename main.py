@@ -26,7 +26,7 @@ FAQS = {
 FEEDBACK = 1
 
 user_db = set()
-ADMIN_IDS = [123456789]  # Replace with actual Telegram user ID(s)
+ADMIN_IDS = [651199698]  # Replace with actual Telegram user ID(s)
 
 # Admin-only decorator
 def admin_only(func):
@@ -57,6 +57,8 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
             InlineKeyboardButton("💬 Feedback", callback_data="feedback_start"),
             InlineKeyboardButton("ℹ️ Info", callback_data="info_menu"),
             InlineKeyboardButton("🚀 Start CashPlantX Bot", url="https://t.me/CashPlantX_bot?start=start")
+        ], [
+            InlineKeyboardButton("🛠 Admin Panel", callback_data="admin_panel")
         ]])
     )
 
@@ -122,7 +124,7 @@ async def faq_answer(update: Update, context: ContextTypes.DEFAULT_TYPE):
     ]
     await query.edit_message_text(f"*{question}*\n\n{answer}", parse_mode="Markdown", reply_markup=InlineKeyboardMarkup(keyboard))
 
-# Info menu (extra advanced flow)
+# Info menu
 async def info_menu(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
     await query.answer()
@@ -147,6 +149,36 @@ async def save_feedback(update: Update, context: ContextTypes.DEFAULT_TYPE):
         f.write(f"{update.effective_user.id}: {feedback_text}\n")
     await update.message.reply_text("🙏 Terima kasih atas maklum balas anda!")
     return ConversationHandler.END
+
+# Admin panel
+@admin_only
+async def admin_panel(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    query = update.callback_query
+    await query.answer()
+    keyboard = [
+        [InlineKeyboardButton("📣 Broadcast", callback_data="admin_broadcast")],
+        [InlineKeyboardButton("📊 User Count", callback_data="admin_usercount")],
+        [InlineKeyboardButton("📁 Export Feedback", callback_data="admin_feedback")],
+        [InlineKeyboardButton("🔙 Kembali", callback_data="main_menu")]
+    ]
+    await query.edit_message_text("🛠 Admin Panel:", reply_markup=InlineKeyboardMarkup(keyboard))
+
+@admin_only
+async def admin_usercount(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    query = update.callback_query
+    await query.answer()
+    await query.edit_message_text(f"📊 Jumlah user: {len(user_db)}")
+
+@admin_only
+async def admin_feedback(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    query = update.callback_query
+    await query.answer()
+    try:
+        with open("feedback.txt", "r") as f:
+            feedback = f.read()
+        await query.edit_message_text("📁 Semua Feedback:\n\n" + feedback[-3000:], parse_mode="Markdown")
+    except FileNotFoundError:
+        await query.edit_message_text("❌ Tiada feedback ditemui.")
 
 # Admin broadcast
 @admin_only
@@ -177,6 +209,10 @@ def main():
     application.add_handler(CallbackQueryHandler(main_menu, pattern="^main_menu$"))
     application.add_handler(CallbackQueryHandler(feedback_start, pattern="^feedback_start$"))
     application.add_handler(CallbackQueryHandler(info_menu, pattern="^info_menu$"))
+
+    application.add_handler(CallbackQueryHandler(admin_panel, pattern="^admin_panel$"))
+    application.add_handler(CallbackQueryHandler(admin_usercount, pattern="^admin_usercount$"))
+    application.add_handler(CallbackQueryHandler(admin_feedback, pattern="^admin_feedback$"))
 
     conv_handler = ConversationHandler(
         entry_points=[MessageHandler(filters.TEXT & ~filters.COMMAND, save_feedback)],
